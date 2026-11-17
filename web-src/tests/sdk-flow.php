@@ -1,0 +1,82 @@
+<?php
+require __DIR__.'/wp-stubs.php';
+$wpdb=new TestDB(); (new SC_Code_Public_REST())->register(); $checks=0;
+function check($condition,$message) { global $checks; if (!$condition) throw new RuntimeException($message); $checks++; }
+function ok($v) { check(!($v instanceof WP_Error),$v instanceof WP_Error ? $v->message : 'response'); return $v; }
+function denied($v,$status) { check($v instanceof WP_Error && $v->data['status']===$status,'Expected error '.$status); }
+denied(test_free_event(2,['title'=>'Forbidden']),403);
+$event=ok(test_free_event(1,['title'=>'Treino 1']));$eid=$event['id'];
+$legacy=$event['data'];unset($legacy['teams_mode'],$legacy['validation'],$legacy['points']);$event=SC_Code_Public_Store::save($event,$legacy,$event['version']);
+denied(test_call('event',3,[], 'GET',['id'=>$eid]),403);
+$c=ok(test_call('challenges',1,['event_id'=>$eid,'title'=>'Soma','statement'=>'Some dois valores','tests'=>[['input'=>'2 3','output'=>'5']]]))['challenges'][0];
+$cid=$c['id'];
+denied(test_call('event',2,[],'GET',['id'=>$eid]),403);
+$count=count(SC_Code_Public_Store::list('challenge',$eid));
+denied(test_call('challenges',1,['event_id'=>$eid,'items'=>[['title'=>'valido','statement'=>'texto'],['title'=>'']]]),400);
+check(count(SC_Code_Public_Store::list('challenge',$eid))===$count,'Import must roll back');
+foreach(['INSERT','COMMIT'] as $failure) {
+    $wpdb->fail=$failure;
+    $result=test_call('challenges',1,['event_id'=>$eid,'title'=>'Falha','statement'=>'Texto']);
+    check($result instanceof WP_Error,'SQL '.$failure.' failure must reach UI');
+    check(count(SC_Code_Public_Store::list('challenge',$eid))===$count,'SQL '.$failure.' must roll back');
+}
+ok(test_call('ai/settings',1,['provider'=>'nvidia','model'=>'fixture-model','transport'=>'server','key'=>'fake-key-professor-123']));
+$classified=ok(test_call('ai/prepare',1,['mode'=>'classify','challenge_id'=>$cid,'transport'=>'server']));
+check($classified['challenge']['data']['level']==='easy' && $classified['challenge']['data']['suggestion']['status']==='proposal','Classification is proposal');
+$proposal=$classified['challenge'];
+$approved=ok(test_call('challenges',1,['event_id'=>$eid,'items'=>[array_merge($proposal['data'],['id'=>$cid,'version'=>$proposal['version'],'approve_suggestion'=>true])]]));
+check($approved['challenges'][0]['data']['suggestion']['status']==='approved','Approved suggestion is preserved, not reclassified as pending');
+$event=ok(test_call('event',1,['id'=>$eid,'version'=>$event['version']]));
+denied(test_call('challenges',1,['event_id'=>$eid,'title'=>'Frozen','statement'=>'No']),409);
+ok(test_call('events/join',2,['code'=>$event['data']['invite']]));
+ok(test_call('events/join',2,['code'=>$event['data']['invite']]));
+check(count(SC_Code_Public_Store::list('member',$eid))===1,'Join idempotent');
+$view=ok(test_call('event',2,[],'GET',['id'=>$eid]));
+check(!isset($view['event']['data']['invite']) && !isset($view['challenges'][0]['data']['hint_policy']) && !isset($view['challenges'][0]['data']['suggestion']),'Student view hides private data');
+$attempt=ok(test_call('attempt',2,['challenge_id'=>$cid,'action'=>'start']));
+$attempt=ok(test_call('attempt',2,['challenge_id'=>$cid,'version'=>$attempt['version'],'action'=>'save','code'=>'print(5)','language'=>'python']));
+denied(test_call('attempt',2,['challenge_id'=>$cid,'version'=>1,'action'=>'save','code'=>'overwrite']),409);
+ok(test_call('ai/settings',2,['provider'=>'nvidia','model'=>'fixture-model','transport'=>'server','key'=>'fake-key-student-12345']));
+$settings=ok(test_call('ai/settings',2,[],'GET'));
+check(!isset($settings['secret']) && $settings['has_key'],'Settings never expose key');
+check(!str_contains(get_user_meta(2,'sc_code_public_ai',true)['profiles']['nvidia']['secret'],'fake-key'),'Secret encrypted');
+check(SC_Code_Public_AI::key(2)==='fake-key-student-12345','Encrypted key roundtrip');
+$prepared=ok(test_call('ai/prepare',2,['mode'=>'hint','challenge_id'=>$cid,'level'=>1,
+    'draft'=>['code'=>'print(2 + 3)','language'=>'python','results'=>[]]]));
+check(!isset($prepared['payload']),'Preparation keeps provider payload on the server');
+$finish=['ticket'=>$prepared['ticket'],'round'=>0];
+denied(test_call('ai/complete',2,$finish+['raw'=>'Client-provided answer.']),409);
+check(ok(test_call('ai/request',2,$finish))===['ready'=>true],'Provider response stays at the server');
+$hint=ok(test_call('ai/complete',2,$finish+['raw'=>'Client-provided answer.']));
+check($hint['attempt']['data']['code']==='print(5)','Hint does not save local source as the canonical attempt');
+check($hint['hint']['code_hash']===hash('sha256','print(2 + 3)'),'Hint retains the hash of the exact draft');
+check($hint['hint']['text']==='Confira os limites usados na repetição.','Model hint text reaches student');
+$attempt=$hint['attempt'];
+$attempt=ok(test_call('attempt',2,['challenge_id'=>$cid,'version'=>$attempt['version'],'action'=>'submit','code'=>'print(5)','language'=>'python']));
+denied(test_call('attempt',2,['challenge_id'=>$cid,'version'=>$attempt['version'],'action'=>'save','code'=>'changed']),409);
+denied(test_call('review',3,['attempt_id'=>$attempt['id'],'version'=>$attempt['version'],'decision'=>'approve']),403);
+denied(test_call('review',2,['attempt_id'=>$attempt['id'],'version'=>$attempt['version'],'decision'=>'approve']),403);
+$ranking=ok(test_call('ranking',2,[],'GET',['event_id'=>$eid]));check($ranking['rows'][0]['points']===0,'Unvalidated delivers zero');
+$wpdb->fail='UPDATE';denied(test_call('review',1,['attempt_id'=>$attempt['id'],'version'=>$attempt['version'],'decision'=>'approve']),503);
+check(SC_Code_Public_Store::get($attempt['id'])['data']['status']==='submitted','Failed approval preserves attempt');
+$attempt=ok(test_call('review',1,['attempt_id'=>$attempt['id'],'version'=>$attempt['version'],'decision'=>'approve']));
+$attempt=ok(test_call('review',1,['attempt_id'=>$attempt['id'],'version'=>$attempt['version'],'decision'=>'approve']));
+$ranking=ok(test_call('ranking',2,[],'GET',['event_id'=>$eid]));check($ranking['rows'][0]['points']===10 && $ranking['rows'][0]['validated']===1,'Approval counts exactly once');
+denied(test_call('attempt',2,['challenge_id'=>$cid,'version'=>$attempt['version'],'action'=>'reopen']),409);
+denied(test_call('ranking',4,[],'GET',['event_id'=>$eid]),403);
+$export=ok(test_call('account/export',2,[],'GET'));check(!str_contains(json_encode($export),'fake-key'),'Export excludes secret');
+$wpdb->fail='DELETE';check(test_call('event',1,['id'=>$eid,'confirmation'=>'Treino 1'],'DELETE') instanceof WP_Error,'Delete failure surfaced');
+check(SC_Code_Public_Store::get($eid)!==null && SC_Code_Public_Store::get($attempt['id'])!==null,'Delete rollback preserves event and attempts');
+denied(test_call('event',1,['id'=>$eid,'confirmation'=>'wrong'],'DELETE'),400);
+ok(test_call('event',1,['id'=>$eid,'confirmation'=>'Treino 1'],'DELETE'));
+check(!SC_Code_Public_Store::get($eid) && !SC_Code_Public_Store::get($attempt['id']),'Scoped cascade');
+check(SC_Code_Public_Domain::hint('Confira os nomes das funções.',1)['text']==='Confira os nomes das funções.','Model hint is preserved');
+check(!isset($GLOBALS['test_routes']['auth/login']),'Only the native WordPress login can create a session');
+check(!isset($GLOBALS['test_routes']['ai/credential']),'Saved keys have no REST retrieval route');
+$permission=$GLOBALS['test_routes']['auth/me']['permission_callback'];
+wp_set_current_user(0);
+check($permission(new TestRequest('GET',[],[],['x-wp-nonce'=>'test-nonce'])) instanceof WP_Error,'Nonce alone cannot authenticate');
+wp_set_current_user(2);
+check($permission(new TestRequest('GET')) instanceof WP_Error,'Cookie session needs the REST nonce');
+check($permission(new TestRequest('GET',[],[],['x-wp-nonce'=>'test-nonce']))===true,'WordPress user and nonce authorize own API');
+echo "SDK flow: $checks checks passed.\n";

@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; worker-src blob:; connect-src https://cdn.jsdelivr.net;"><title>Execução isolada</title></head><body><script>
+if (window.origin === 'null' && window.parent !== window) {
+const id=location.hash.slice(1);let started=false;
+addEventListener('message',event=>{
+ if(event.source!==parent||event.data?.id!==id||started)return;started=true;
+ const {language,code,input}=event.data;
+ const source=`
+ let output='';const append=s=>{output+=String(s);if(output.length>64000)throw Error('Limite de saída excedido');};
+ onmessage=async e=>{try{
+ const {language,code,input}=e.data;
+ if(language==='python'){
+  let py;try{importScripts('https://cdn.jsdelivr.net/pyodide/v0.29.2/full/pyodide.js');py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.2/full/'});}catch(e){postMessage({output:'',error:'Ambiente Python indisponível. Tente novamente.',exit_code:1,infrastructure_error:true});return;}
+  const lines=input.split('\\n');let cursor=0;py.setStdin({stdin:()=>cursor<lines.length?lines[cursor++]:undefined});
+  const decoder=new TextDecoder();py.setStdout({write:buffer=>{append(decoder.decode(buffer,{stream:true}));return buffer.length;}});py.setStderr({write:buffer=>buffer.length});
+  try{await py.runPythonAsync(code);}finally{py.runPython('import sys; sys.stdout.flush(); sys.stderr.flush()');}
+ }else if(language==='javascript'){
+  const lines=input.split('\\n');let cursor=0;globalThis.readline=()=>lines[cursor++];
+  globalThis.print=(...args)=>append(args.join(' ')+'\\n');globalThis.console={log:globalThis.print,error:globalThis.print};
+  (0,eval)(code);
+ }else throw Error('Linguagem indisponível');
+ postMessage({output,exit_code:0});
+ }catch(error){postMessage({output,error:String(error).slice(0,3000),exit_code:1});}};`;
+ const worker=new Worker(URL.createObjectURL(new Blob([source],{type:'text/javascript'})));
+ const timeout=setTimeout(()=>{worker.terminate();parent.postMessage({id,type:'result',result:{output:'',error:'Tempo excedido',exit_code:124}},'*');},language==='python'?55000:5000);
+ worker.onmessage=e=>{clearTimeout(timeout);worker.terminate();parent.postMessage({id,type:'result',result:e.data},'*');};
+ worker.onerror=()=>{clearTimeout(timeout);worker.terminate();parent.postMessage({id,type:'result',result:{output:'',error:'Ambiente indisponível',exit_code:1,infrastructure_error:true}},'*');};
+ worker.postMessage({language,code,input});
+});
+parent.postMessage({id,type:'ready'},'*');
+}
+</script></body></html>

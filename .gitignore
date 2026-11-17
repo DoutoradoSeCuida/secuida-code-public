@@ -1,0 +1,16 @@
+/node_modules/
+/web/
+/zips/
+/_temporarios/
+**/__pycache__/
+**/.env
+**/.env.*
+**/credentials/
+**/credentials.json
+**/*.keystore
+**/*.jks
+**/*.enc
+**/*.log
+**/node_modules/
+**/.expo/
+**/dist/

@@ -1,0 +1,2 @@
+title;statement;level;topics;languages;tests
+Soma de dois valores;Leia dois inteiros e escreva a soma.;easy;entrada e saída;python|c|cpp|java|javascript;"[{""input"":""2 3"",""output"":""5""}]"

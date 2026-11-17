@@ -1,0 +1,44 @@
+export type Language = 'python' | 'c' | 'cpp' | 'java' | 'javascript';
+export type Level = 'easy' | 'medium' | 'hard';
+export type RecordItem<T> = { id: string; kind: string; parent: string; owner: number; version: number; data: T };
+export type User = { id: number; name: string; username: string; email: string; can_teach: boolean; can_manage_teachers?: boolean };
+export type Evaluators = Record<'gemini'|'nvidia', {model:string;reasoning:Reasoning}>;
+export type EventData = { classroom_version?:number;phase?:'warmup'|'official';warmup_ids?:string[];hidden_ids?:string[];hidden_levels?:Level[];level_labels?:Record<Level,string>; evaluators?:Evaluators; title: string; description: string; status: 'draft' | 'published'; invite?: string; starts_at: string; ends_at: string;published_at?:number;schedule_updated_at?:number; integrity_penalty?:number;policy_version?:number;self_teams?:boolean;team_min?:number;team_max?:number|null;focus_policy?:FocusPolicy;teams_mode?: boolean; validation?: 'ai_local'; points?: Record<Level, number> };
+export type TestCase = { input: string; output: string };
+export type OutputComparison = { kind: 'exact'|'numeric'|'constructive'|'unconfirmed'; tolerance: {epsilon:number; relative:boolean}|null };
+export type ImportInfo = { external_id:string;source_level:number;source_difficulty:string;source_status:string;review_status:'pending'|'approved'|'provided';output_kind:'exact'|'numeric'|'constructive'|'unconfirmed';comparison_declared?:boolean;comparison_origin?:string;tests_origin?:string;preparation_version?:number;preparation_issues?:string[];warnings:string[] };
+export type Reconciliation = { status:'consistent'|'issues'|'uncertain';summary:string;issues:string[];proposed_tests:TestCase[];source:'ai_proposal';applied:boolean;at:number };
+export type ChallengeData = { reconciliation?:Reconciliation;examples?:TestCase[];figures?:{id:string;mime:string}[];attribution?:string;import_info?:ImportInfo;output_comparison?:OutputComparison; title: string; statement: string; level: Level; languages: Language[]; tests: TestCase[]; topics: string; hint_policy?: string; suggestion?: { level: Level; reason: string; status: 'proposal' | 'approved' } };
+export type RunResult = { output: string; error?: string; exit_code?: number; passed?: boolean; comparison?: 'exact'|'numeric'|'ai_pending'|'constructive'; infrastructure_error?: boolean; engine: string };
+export type Hint = { hidden?:boolean;hidden_at?:number; sequence?:number;at?:number;request?:string; question?:string; category?: string; revision?: number; code_hash?:string;draft_language?:Language;level: number; text: string; assessment: 'indicative'; transport: string };
+export type AttemptData = { event_id: string; challenge_id: string; code: string; language: Language; status: 'working' | 'submitted' | 'validated' | 'rejected' | 'revise' | 'paused'; team_id?: string; warmup?: boolean; assessment?: Assessment; grade?: number; started_at: number; submitted_at?: number; revisions: number; hints: number; runs: number; results: { items?: RunResult[] }; hint_history?:Hint[];last_hint?: Hint; feedback?: string };
+export type EventRecord = RecordItem<EventData> & {archived?:boolean;list_version?:number;access_role?:"monitor"|"editor"|"admin"};
+export type Challenge = RecordItem<ChallengeData>;
+export type Attempt = RecordItem<AttemptData> & { student_name?: string };
+export type EventDetail = { event: EventRecord; challenges: Challenge[]; challenge_revision?:string; attempts: Attempt[]; teams: Team[]; members: Member[]; my_team_id: string; claims: Claim[]; server_now?:number };
+export type EventSync = Omit<EventDetail,'challenges'> & {challenges:Challenge[]|null};
+export type Reasoning = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'off' | 'on';
+export type AIModel = { id: string; selectable: boolean; reasoning: { kind: 'default' | 'effort' | 'toggle'; options: Reasoning[]; note: string } };
+export type AIProfile = { model: string; reasoning?: Reasoning; model_info?: AIModel; transport: 'auto' | 'direct' | 'server'; has_key: boolean };
+export type AISettings = AIProfile & { provider: 'nvidia' | 'openai' | 'gemini'; revision?: string; providers?: Partial<Record<'nvidia' | 'openai' | 'gemini', AIProfile>> };
+export type RankingRow = { user_id: number; name: string; points: number; earned_points?:number;penalty?:number;position: number; validated: number; submitted: number; hints: number; revisions: number; elapsed_seconds: number; by_level: { easy: number; medium: number; hard: number }; badges: string[] };
+export const languages: Language[] = ['python', 'c', 'cpp', 'java', 'javascript'];
+export const languageNames: Record<Language, string> = { python: 'Python', c: 'C', cpp: 'C++', java: 'Java', javascript: 'JavaScript' };
+export const levelNames: Record<Level, string> = { easy: 'Fácil', medium: 'Médio', hard: 'Difícil' };
+export const statusNames = { working: 'Em andamento', submitted: 'Entregue · provisório', validated: 'Aprovado', rejected: 'Reprovado · aguarda decisão do professor', revise: 'Revisão solicitada', paused: 'Para depois' };
+
+export type Judgment = { rubric_version?: number; source: 'ai' | 'teacher'; grade: number; approved: boolean; category?: string; verdict?: string; criteria?: { correctness: number; efficiency: number; clarity: number }; reason?: string; integrity?: {suspected:boolean; reason:string}; by?: number; at: number };
+export type Assessment = { queued?:boolean; evaluator?:{provider:string;model:string;reasoning:string};evaluator_policy?:Evaluators; rubric_version?: number; id: string; run_id: string; status: 'queued' | 'running' | 'completed' | 'needs_attention'; current_step_id: string | null; message: string; steps: {id: string; title: string; status: 'pending' | 'active' | 'done' | 'error'}[]; original?: Judgment; effective?: Judgment; history?: Judgment[]; evidence?: { items: RunResult[] }; error_repair?: { user_message: string } };
+export type Team = RecordItem<{name: string;roster?:string[];approved?:boolean;suspended?:boolean;reason?:string;invite?:string;invite_required?:boolean}>;
+export type Member = { user_id: number; name: string; team_id: string;team_locked?:boolean };
+export type Claim = RecordItem<{team_id: string; challenge_id: string; attempt_id: string; name: string; status?: AttemptData['status']}>;
+export type TeamRow = { id: string; name: string; points: number; earned_points?:number;penalty?:number;position: number; validated: number; members: number };
+export type Boost = { seq: number; team_id: string; name: string; challenge: string; level: Level; delta: number; source: string; at: number };
+export type RaceMark = {id:string;team_id:string;name:string;at:number;anchor:number} & ({type:'submission';challenge:string;number:number|null;possible:number;awarded:number;status:'submitted'|'validated'|'rejected'|'revise'|'interrupted'} | {type:'penalty';points:number;waived:boolean;reason?:string});
+export type RaceData = {rows: RankingRow[]; teams?: TeamRow[]; boosts?: Boost[]; marks?:RaceMark[]; cursor?: number; maximum?: number};
+export function challengePoints(event: EventData, level: Level) { return event.classroom_version===1 && event.phase!=='official' ? 0 : event.points?.[level] ?? ({easy:10,medium:20,hard:40})[level]; }
+
+export type FocusPolicy={enabled:boolean;grace_seconds:number;warning_count:number;points_per_exit:number;max_penalty:number;version:number;fullscreen_exits?:boolean;focus_exits?:boolean};
+export type FocusExit=RecordItem<{session_id:string;team_id:string;started_at:number;returned_at:number;seconds:number;status:'tolerance'|'warning'|'penalty'|'cap';points:number;waived:boolean;source:string;history:{by:number;at:number;reason:string;waived:boolean}[]}>;
+export type FocusState={policy:FocusPolicy;session:{id:string;client_id:string;seq:number;active:boolean;hidden:boolean;started_at:number}|null;exits:FocusExit[];penalty:number;server_now:number};
+export type MonitorData={event:{id:string;title:string;starts_at:string;ends_at:string;status:string;classroom_version?:1};teams:{id:string;name:string;roster?:string[]}[];challenges:{id:string;title:string}[];students:{user_id:number;name:string;team_id:string;joined_at:number;started_at:number|null;last_seen:number|null;hidden:boolean;exits:FocusExit[];attempts:{id:string;challenge_id:string;status:AttemptData['status'];grade:number|null;started_at:number;submitted_at:number|null;assessment_status?:string}[]}[];server_now:number;can_manage:boolean;can_invite?:boolean;invitations?:RecordItem<{expires:number;accepted_by:number|null;accepted_name?:string|null;accepted_names?:string[];multi_use?:boolean;revoked:boolean}>[]};

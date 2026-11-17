@@ -1,0 +1,13 @@
+{
+  "challenge": {
+    "title": "A Conspiração dos Professores do IFSP",
+    "statement": "Leia N (3 <= N <= 70). energia(1)=2, energia(2)=3. Para N>=3, energia(N)=min(energia(i)*energia(N-i)) para 1<=i<N. Imprima o menor custo inteiro.",
+    "topics": "programação dinâmica; recorrências; inteiros grandes",
+    "tests": [{"input": "10", "output": "243"}]
+  },
+  "code": "#include <stdio.h>\n\nint main(void) {\n    int n;\n    unsigned long long energia = 1;\n\n    if (scanf(\"%d\", &n) != 1) {\n        return 1;\n    }\n\n    /* Cada par de professores custa 3 unidades. */\n    for (int i = 1; i < n / 2; i++) {\n        energia *= 3;\n    }\n\n    /* Se N for ímpar, sobra um professor, que custa 2. */\n    if (n % 2 != 0) {\n        energia *= 2;\n    }\n\n    printf(\"%llu\\n\", energia);\n    return 0;\n}\n",
+  "misleading_hint": "Sua implementação tenta uma fórmula direta, mas precisa explorar explicitamente todas as divisões com min. Reescreva usando programação dinâmica.",
+  "reported_output": "81\n",
+  "expected_hint_target": "Quantidade de repetições do laço; não substituir a estratégia matemática.",
+  "acceptable_hint_example": "Confira quantas vezes o laço executa a multiplicação. Para uma entrada pequena, essa quantidade corresponde ao número de pares que você queria considerar?"
+}

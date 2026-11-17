@@ -1,0 +1,16 @@
+import { useState } from 'react';
+import { router } from 'expo-router';
+import { Text } from 'react-native';
+import { useAuth } from '../../src/providers/AuthProvider';
+import { useCode } from '../../src/providers/CodeProvider';
+import { api } from '../../src/lib/api';
+import { Invite,pendingInvite,saveInvite } from '../../src/lib/invite';
+import { Page,Notice,ui } from '../../src/components/Page';
+import { Card } from '../../src/components/Card';
+import { Choice } from '../../src/components/Choice';
+import { TextField } from '../../src/components/TextField';
+import { PrimaryButton } from '../../src/components/PrimaryButton';
+export default function Join(){const {token}=useAuth();const state=useCode();const [invite,setInvite]=useState<Invite>(pendingInvite()||{kind:'team',code:''});const [preview,setPreview]=useState<{event_title:string;team_name?:string;role?:'monitor'|'editor'|'admin'}|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+ async function go(confirm=false){setBusy(true);setError('');try{const r=await api<{event_id:string;event_title:string;team_name?:string;role?:'monitor'|'editor'|'admin'}>(invite.kind==='team'?'teams/join':invite.kind==='teacher'?'collab/accept':'monitor/accept',token,{event_id:invite.event,code:invite.code,confirm});if(!confirm){setPreview(r);return;}saveInvite(null);await state.refresh();await state.select(r.event_id);router.replace(invite.kind==='team'?'/team':invite.kind==='teacher'&&r.role!=='monitor'?'/teacher':'/monitor');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ return <Page title="Abrir convite" help="events#invites" back={()=>router.replace('/')}><Card>{error&&<Notice text={error} error/>}<Choice label="Tipo de convite" value={invite.kind} options={[{value:'team',label:'Convite de time'},{value:'monitor',label:'Convite de monitor'},{value:'teacher',label:'Convite de professor'}]} onChange={kind=>{setInvite({kind:kind as Invite['kind'],code:''});setPreview(null);}}/><TextField label="Código do convite" helperText="Cole o código recebido de um colega ou professor. O link preenche este campo automaticamente." value={invite.code} autoCapitalize="characters" onChangeText={code=>{setInvite(v=>({...v,code:code.toUpperCase()}));setPreview(null);}}/>{!preview?<PrimaryButton label="Conferir convite" loading={busy} disabled={!invite.code.trim()} onPress={()=>go()}/>:<><Text style={ui.h2}>{preview.event_title}</Text><Notice text={invite.kind==='team'?`Você entrará no evento e no time “${preview.team_name}”. Se já tiver outro time, peça ajuda ao professor.`:invite.kind==='teacher'?(preview.role==='admin'?'Você poderá administrar este evento, inclusive convidar pessoas e excluir o evento.':preview.role==='editor'?'Você poderá acompanhar e editar este evento, seus desafios e avaliações.':'Você poderá acompanhar alunos, entregas e resultados, sem editar.'): 'Você poderá acompanhar alunos e entregas deste evento, sem editar notas, regras ou equipes.'}/><PrimaryButton label={invite.kind==='team'?'Confirmar entrada no time':invite.kind==='teacher'?'Aceitar convite de professor':'Aceitar acesso de monitor'} loading={busy} onPress={()=>go(true)}/></>}<PrimaryButton label="Cancelar convite" variant="secondary" disabled={busy} onPress={()=>{saveInvite(null);router.replace('/');}}/></Card></Page>;
+}
